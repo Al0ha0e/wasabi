@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Password</title>
+  </head>
+  <body>
+    <pre id="output"></pre>
+    <script src="enc.js"></script>
+    <!-- <script src="enc.wasabi.js"></script>
+    <script src="analysis.js"></script> -->
+    <script>
+      Module.onRuntimeInitialized = _ => {
+        let input = window.prompt("What is the password?");
+        let result = Module.ccall('enc', 'string', ['string'], [ input ]);
+        document.getElementById("output").textContent = result;
+      };
+    </script>
+  </body>
+</html>
