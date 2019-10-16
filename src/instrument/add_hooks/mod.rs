@@ -12,6 +12,7 @@ use self::duplicate_stack::*;
 use self::hook_map::HookMap;
 use self::static_info::*;
 use self::type_stack::TypeStack;
+use std::fs::OpenOptions;
 
 mod block_stack;
 mod convert_i64;
@@ -45,7 +46,28 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
     let start_not_executed_global =
         module.add_global(I32, Mutability::Mut, vec![Const(Val::I32(1)), End]);
 
+    println!("SZH Has CHanged it!");
+    //SSSSSSSSSSSSS
+    let mut s_idx: Option<Idx<Function>> = None;
+    let szhiter = module.functions.iter();
+    let mut szhid = 0;
+    for function in szhiter {
+        //println!("MET FUNCTION {} {}",function.import.clone().unwrap().0,function.import.clone().unwrap().1);
+        if function.import.is_some() {
+            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="printi" {
+                let szszhid : usize = szhid;
+                s_idx = Some(szszhid.into());
+                println!("FOUND {}",szszhid);
+                if !s_idx.is_some() {
+                    println!("INVALID");
+                }
+            }
+        }
+        szhid+=1;
+    }
+    println!("????");
     module.functions.par_iter_mut().enumerate().for_each(&|(fidx, function): (usize, &mut Function)| {
+
         let fidx = fidx.into();
         // only instrument non-imported functions
         if function.code.is_none() {
@@ -78,7 +100,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                 Global(GlobalSet, start_not_executed_global),
                 fidx.to_const(),
                 Const(Val::I32(-1)),
-                hooks.start(),
+                hooks.start(s_idx),
                 End,
             ]);
         }
@@ -89,7 +111,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                 fidx.to_const(),
                 // function begin does not correspond to any instruction, so take -1 as instruction index
                 Const(Val::I32(-1)),
-                hooks.begin_function()
+                hooks.begin_function(s_idx)
             ]);
         }
 
@@ -176,7 +198,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                     instrumented_body.extend_from_slice(&[
                         location.0,
                         location.1,
-                        hooks.instr(&instr, &[])
+                        hooks.instr(&instr, &[],s_idx)
                     ])
                 },
                 Unreachable => {
@@ -185,7 +207,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         instrumented_body.extend_from_slice(&[
                             location.0,
                             location.1,
-                            hooks.instr(&instr, &[]),
+                            hooks.instr(&instr, &[],s_idx),
                         ])
                     }
 
@@ -207,7 +229,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         instrumented_body.extend_from_slice(&[
                             location.0,
                             location.1,
-                            hooks.begin_block(),
+                            hooks.begin_block(s_idx),
                         ])
                     }
                 }
@@ -221,7 +243,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         instrumented_body.extend_from_slice(&[
                             location.0,
                             location.1,
-                            hooks.begin_loop(),
+                            hooks.begin_loop(s_idx),
                         ])
                     }
                 }
@@ -239,7 +261,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.0.clone(),
                             location.1.clone(),
                             Local(LocalGet, condition_tmp),
-                            hooks.instr(&instr, &[])
+                            hooks.instr(&instr, &[],s_idx)
                         ]);
                     }
 
@@ -251,7 +273,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         instrumented_body.extend_from_slice(&[
                             location.0,
                             location.1,
-                            hooks.begin_if()
+                            hooks.begin_if(s_idx)
                         ]);
                     }
                 }
@@ -270,7 +292,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.0.clone(),
                             location.1.clone(),
                             begin_if.to_const(),
-                            hooks.end(&if_block),
+                            hooks.end(&if_block,s_idx),
                         ]);
                     }
 
@@ -281,7 +303,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.0,
                             location.1,
                             begin_if.to_const(),
-                            hooks.begin_else(),
+                            hooks.begin_else(s_idx),
                         ])
                     }
                 }
@@ -303,7 +325,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                                 Const(Val::I32(-1)),
                             ]);
                             instrumented_body.append(&mut restore_locals_with_i64_handling(&result_tmps, &function));
-                            instrumented_body.push(hooks.instr(&Return, result_tys));
+                            instrumented_body.push(hooks.instr(&Return, result_tys,s_idx));
                         }
                     }
 
@@ -312,7 +334,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
 
                     if enabled_hooks.is_enabled(HighLevelHook::End) {
                         instrumented_body.append(&mut block.to_end_hook_args(fidx));
-                        instrumented_body.push(hooks.end(&block))
+                        instrumented_body.push(hooks.end(&block,s_idx))
                     }
 
                     instrumented_body.push(instr);
@@ -332,7 +354,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.1,
                             target_label.to_const(),
                             br_target.absolute_instr.to_const(),
-                            hooks.instr(&instr, &[])
+                            hooks.instr(&instr, &[],s_idx)
                         ])
                     }
 
@@ -340,7 +362,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                     if enabled_hooks.is_enabled(HighLevelHook::End) {
                         for block in br_target.ended_blocks {
                             instrumented_body.append(&mut block.to_end_hook_args(fidx));
-                            instrumented_body.push(hooks.end(&block));
+                            instrumented_body.push(hooks.end(&block,s_idx));
                         }
                     }
 
@@ -369,7 +391,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                                 Local(LocalGet, condition_tmp),
                                 target_label.to_const(),
                                 br_target.absolute_instr.to_const(),
-                                hooks.instr(&instr, &[])
+                                hooks.instr(&instr, &[],s_idx)
                             ]);
                         }
 
@@ -383,7 +405,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             ]);
                             for block in br_target.ended_blocks {
                                 instrumented_body.append(&mut block.to_end_hook_args(fidx));
-                                instrumented_body.push(hooks.end(&block));
+                                instrumented_body.push(hooks.end(&block,s_idx));
                             }
                             // of the artificially inserted if block before
                             instrumented_body.push(End);
@@ -414,7 +436,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.1,
                             Local(LocalGet, target_idx_tmp),
                             Const(Val::I32((module_info.read().br_tables.len() - 1) as i32)),
-                            hooks.instr(&instr, &[])
+                            hooks.instr(&instr, &[],s_idx)
                         ])
                     }
 
@@ -440,14 +462,14 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.1,
                         ]);
                         instrumented_body.append(&mut restore_locals_with_i64_handling(&result_tmps, &function));
-                        instrumented_body.push(hooks.instr(&instr, result_tys));
+                        instrumented_body.push(hooks.instr(&instr, result_tys,s_idx));
                     }
 
                     // end hooks for all intermediate blocks that are "jumped over"
                     if enabled_hooks.is_enabled(HighLevelHook::End) {
                         for block in block_stack.return_target().ended_blocks {
                             instrumented_body.append(&mut block.to_end_hook_args(fidx));
-                            instrumented_body.push(hooks.end(&block));
+                            instrumented_body.push(hooks.end(&block,s_idx));
                         }
                     }
 
@@ -472,7 +494,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         ]);
                         instrumented_body.append(&mut restore_locals_with_i64_handling(&arg_tmps, &function));
                         instrumented_body.extend_from_slice(&[
-                            hooks.instr(&instr, &func_ty.params),
+                            hooks.instr(&instr, &func_ty.params,s_idx),
                             instr,
                         ]);
 
@@ -486,7 +508,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.1,
                         ]);
                         instrumented_body.append(&mut restore_locals_with_i64_handling(&result_tmps, &function));
-                        instrumented_body.push(hooks.call_post(&func_ty.results))
+                        instrumented_body.push(hooks.call_post(&func_ty.results,s_idx))
                     } else {
                         instrumented_body.push(instr);
                     }
@@ -510,7 +532,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         ]);
                         instrumented_body.append(&mut restore_locals_with_i64_handling(&arg_tmps, &function));
                         instrumented_body.extend_from_slice(&[
-                            hooks.instr(&instr, &func_ty.params),
+                            hooks.instr(&instr, &func_ty.params,s_idx),
                             instr.clone(),
                         ]);
 
@@ -524,7 +546,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.1,
                         ]);
                         instrumented_body.append(&mut restore_locals_with_i64_handling(&result_tmps, &function));
-                        instrumented_body.push(hooks.call_post(&func_ty.results));
+                        instrumented_body.push(hooks.call_post(&func_ty.results,s_idx));
                     } else {
                         instrumented_body.push(instr.clone());
                     }
@@ -546,7 +568,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         ]);
                         instrumented_body.append(&mut convert_i64_instr(Local(LocalGet, tmp), ty));
                         // replace drop with hook call
-                        instrumented_body.push(hooks.instr(&instr, &[ty]));
+                        instrumented_body.push(hooks.instr(&instr, &[ty],s_idx));
                     } else {
                         instrumented_body.push(instr);
                     }
@@ -570,7 +592,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         ]);
                         instrumented_body.append(&mut restore_locals_with_i64_handling(&arg_tmps, &function));
                         // replace select with hook call
-                        instrumented_body.push(hooks.instr(&instr, &[ty, ty]));
+                        instrumented_body.push(hooks.instr(&instr, &[ty, ty],s_idx));
                     } else {
                         instrumented_body.push(instr);
                     }
@@ -594,7 +616,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             local_idx.to_const(),
                         ]);
                         instrumented_body.append(&mut convert_i64_instr(Local(LocalGet, local_idx), local_ty));
-                        instrumented_body.push(hooks.instr(&instr, &[local_ty]));
+                        instrumented_body.push(hooks.instr(&instr, &[local_ty],s_idx));
                     }
                 }
                 Global(op, global_idx) => {
@@ -612,7 +634,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             global_idx.to_const(),
                         ]);
                         instrumented_body.append(&mut convert_i64_instr(Global(GlobalGet, global_idx), global_ty));
-                        instrumented_body.push(hooks.instr(&instr, &[global_ty]));
+                        instrumented_body.push(hooks.instr(&instr, &[global_ty],s_idx));
                     }
                 }
 
@@ -630,7 +652,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.1,
                             // optimization: just call memory_size again instead of duplicating result into local
                             instr.clone(),
-                            hooks.instr(&instr, &[])
+                            hooks.instr(&instr, &[],s_idx)
                         ]);
                     }
                 }
@@ -649,7 +671,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             location.1,
                             Local(LocalGet, input_tmp),
                             Local(LocalGet, result_tmp),
-                            hooks.instr(&instr, &[])
+                            hooks.instr(&instr, &[],s_idx)
                         ]);
                     } else {
                         instrumented_body.push(instr);
@@ -676,7 +698,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             Const(Val::I32(memarg.alignment as i32)),
                         ]);
                         instrumented_body.append(&mut restore_locals_with_i64_handling(&[addr_tmp, value_tmp], &function));
-                        instrumented_body.push(hooks.instr(&instr, &[]));
+                        instrumented_body.push(hooks.instr(&instr, &[],s_idx));
                     } else {
                         instrumented_body.push(instr);
                     }
@@ -698,7 +720,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                             Const(Val::I32(memarg.alignment as i32)),
                         ]);
                         instrumented_body.append(&mut restore_locals_with_i64_handling(&[addr_tmp, value_tmp], &function));
-                        instrumented_body.push(hooks.instr(&instr, &[]));
+                        instrumented_body.push(hooks.instr(&instr, &[],s_idx));
                     } else {
                         instrumented_body.push(instr);
                     }
@@ -719,7 +741,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         ]);
                         // optimization: just call T.const again, instead of duplicating result into local
                         instrumented_body.append(&mut convert_i64_instr(instr.clone(), val.to_type()));
-                        instrumented_body.push(hooks.instr(&instr, &[]));
+                        instrumented_body.push(hooks.instr(&instr, &[],s_idx));
                     }
                 }
                 Numeric(op) => {
@@ -741,7 +763,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
                         instrumented_body.append(&mut restore_locals_with_i64_handling(
                             &[input_tmps, result_tmps].concat(),
                             &function));
-                        instrumented_body.push(hooks.instr(&instr, &[]));
+                        instrumented_body.push(hooks.instr(&instr, &[],s_idx));
                     } else {
                         instrumented_body.push(instr);
                     }

@@ -38,6 +38,7 @@ pub struct Function {
     pub code: Option<Code>,
     // functions (and other elements) can be exported multiple times under different names
     pub export: Vec<String>,
+    pub ll_name: String,
 }
 
 #[derive(Debug, Clone, TypeName)]
@@ -66,7 +67,7 @@ pub struct Memory {
 }
 
 #[derive(Debug, Clone)]
-pub struct Code {
+pub struct  Code {
     pub locals: Vec<ValType>,
     pub body: Expr,
 }
@@ -680,6 +681,7 @@ impl Module {
                 body,
             }),
             export: Vec::new(),
+            ll_name: "".to_string(),
         });
         (self.functions.len() - 1).into()
     }
@@ -690,6 +692,7 @@ impl Module {
             import: Some((module, name)),
             code: None,
             export: Vec::new(),
+            ll_name: "".to_string(),
         });
         (self.functions.len() - 1).into()
     }

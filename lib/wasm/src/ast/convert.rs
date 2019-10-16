@@ -31,6 +31,7 @@ impl From<ll::Module> for hl::Module {
                                 import,
                                 code: None,
                                 export,
+                                ll_name: "".to_string(),
                             }),
                             ll::ImportType::Table(type_) => module.tables.push(hl::Table {
                                 type_,
@@ -63,6 +64,7 @@ impl From<ll::Module> for hl::Module {
                             import: None,
                             code: None,
                             export: Vec::new(),
+                            ll_name: "".to_string(),
                         });
                     }
                 }
