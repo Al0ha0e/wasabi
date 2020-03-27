@@ -2,7 +2,7 @@ use parking_lot::RwLock;
 use rayon::prelude::*;
 use serde_json;
 use wasm::ast::highlevel::{Function, GlobalOp::*, Instr, Instr::*, LocalOp::*, Module};
-use wasm::ast::{BlockType, Idx, InstrType, Mutability, Val, ValType::*};
+use wasm::ast::{FunctionType,BlockType, Idx, InstrType, Mutability, Val, ValType::*};
 
 use crate::config::{EnabledHooks, HighLevelHook};
 
@@ -40,7 +40,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
     // NOTE must be after exporting table and function, so that their export names are in the static info object
     let module_info: ModuleInfo = (&*module).into();
     let module_info = RwLock::new(module_info);
-    let hooks = HookMap::new(&module);
+    //let hooks = HookMap::new(&module);
 
     // add global for start, set to false on the first execution of the start function
     let start_not_executed_global =
@@ -51,10 +51,12 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
     let mut s_idx: Option<Idx<Function>> = None;
     let szhiter = module.functions.iter();
     let mut szhid = 0;
+    let mut id_found = false;
     for function in szhiter {
         //println!("MET FUNCTION {} {}",function.import.clone().unwrap().0,function.import.clone().unwrap().1);
         if function.import.is_some() {
             if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="printi" {
+                id_found = true;
                 let szszhid : usize = szhid;
                 s_idx = Some(szszhid.into());
                 println!("FOUND {}",szszhid);
@@ -65,6 +67,19 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
         }
         szhid+=1;
     }
+    if !id_found {
+        let mut szh_lowlevel_args = vec![I64];
+        module.functions.push(Function {
+            type_: FunctionType::new(szh_lowlevel_args, vec![]),//FunctionType::new(szh_lowlevel_args, vec![]),
+            import: Some(("env".to_string(), "printi".to_string())),
+            code: None,
+            export: Vec::new(),
+            ll_name: String::from("")
+        });
+        let szszhid : usize = szhid;
+        s_idx = Some(szszhid.into());
+    }
+    let hooks = HookMap::new(&module);
     println!("????");
     module.functions.par_iter_mut().enumerate().for_each(&|(fidx, function): (usize, &mut Function)| {
 
