@@ -4,7 +4,7 @@ use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::collections::HashMap;
 use wasm::ast::highlevel::{Function, Instr, Instr::*, Module,Code};
 use wasm::ast::{FunctionType, Idx, ValType, ValType::*,Val};
-use wasm::ast::highlevel::NumericOp::I64ExtendI32S;
+use wasm::ast::highlevel::NumericOp::I64ExtendI32U;
 use wasm::ast::highlevel::LocalOp::LocalGet;
 
 /*
@@ -58,7 +58,9 @@ impl Hook {
         args: Vec<Arg>,
         highlevel_name: &str,
         js_args: &str,
-        szh_idx: Option<Idx<Function>>,
+        printi_idx: Option<Idx<Function>>,
+        printsf_idx: Option<Idx<Function>>,
+        printdf_idx: Option<Idx<Function>>,
         ptype_id: i64
     ) -> Self {
         let lowlevel_name = lowlevel_name.into();
@@ -100,17 +102,27 @@ impl Hook {
             let szhlen = lowlevel_args.len();
             let mut szhi = 0;
             szhinstr.push(Const(Val::I64(ptype_id)));
-            szhinstr.push(Call(szh_idx.unwrap().clone()));
+            szhinstr.push(Call(printi_idx.unwrap().clone()));
             szhinstr.push(Const(Val::I32(szhlen as i32)));
-            szhinstr.push(Numeric(I64ExtendI32S));
-            szhinstr.push(Call(szh_idx.unwrap().clone()));
+            szhinstr.push(Numeric(I64ExtendI32U));
+            szhinstr.push(Call(printi_idx.unwrap().clone()));
             while szhi<szhlen{
                 szhinstr.push(Local(LocalGet,szhi.into()));
-                szhinstr.push(Numeric(I64ExtendI32S));
-                if !szh_idx.is_some() {
-                    println!("OUT INVALID");
+                match lowlevel_args[szhi] {
+                    I32 => {
+                        szhinstr.push(Numeric(I64ExtendI32U));
+                        szhinstr.push(Call(printi_idx.unwrap().clone()));//7
+                    }
+                    I64 => {}
+                    F32 => {
+                        //szhinstr.push(Numeric(I64ExtendI32U));
+                        szhinstr.push(Call(printsf_idx.unwrap().clone()));//7
+                    }
+                    F64 => {
+                        //szhinstr.push(Numeric(I64ExtendI32U));
+                        szhinstr.push(Call(printdf_idx.unwrap().clone()));//7
+                    }
                 }
-                szhinstr.push(Call(szh_idx.unwrap().clone()));//7
                 szhi+=1;
             }
             szhinstr.push(End);
@@ -171,7 +183,7 @@ impl HookMap {
         result
     }
 
-    pub fn instr(&self, instr: &Instr, polymorphic_tys: &[ValType],s_idx: Option<Idx<Function>>) -> Instr {
+    pub fn instr(&self, instr: &Instr, polymorphic_tys: &[ValType],printi_idx: Option<Idx<Function>>,printsf_idx: Option<Idx<Function>>,printdf_idx: Option<Idx<Function>>) -> Instr {
         let name = &mangle_polymorphic_name(instr.to_name(), polymorphic_tys)[..];
         let ptype_id = mangle_polymorphic_id(instr.to_tp_id(),polymorphic_tys);
         let hook = match *instr {
@@ -181,37 +193,37 @@ impl HookMap {
                 - types are determined just from instruction
             */
 
-            Nop | Unreachable => Hook::new(name, args!(), name, "",s_idx,ptype_id),
+            Nop | Unreachable => Hook::new(name, args!(), name, "",printi_idx,printsf_idx,printdf_idx,ptype_id),
 
-            If(_) => Hook::new(name, args!(condition: I32), "if_", "condition === 1",s_idx,ptype_id),
-            Br(_) => Hook::new(name, args!(targetLabel: I32, targetInstr: I32), name, "{label: targetLabel, location: {func, instr: targetInstr}}",s_idx,ptype_id),
-            BrIf(_) => Hook::new(name, args!(condition: I32, targetLabel: I32, targetInstr: I32), name, "{label: targetLabel, location: {func, instr: targetInstr}}, condition === 1",s_idx,ptype_id),
+            If(_) => Hook::new(name, args!(condition: I32), "if_", "condition === 1",printi_idx,printsf_idx,printdf_idx,ptype_id),
+            Br(_) => Hook::new(name, args!(targetLabel: I32, targetInstr: I32), name, "{label: targetLabel, location: {func, instr: targetInstr}}",printi_idx,printsf_idx,printdf_idx,ptype_id),
+            BrIf(_) => Hook::new(name, args!(condition: I32, targetLabel: I32, targetInstr: I32), name, "{label: targetLabel, location: {func, instr: targetInstr}}, condition === 1",printi_idx,printsf_idx,printdf_idx,ptype_id),
             // NOTE js_args is very hacky! We rely on the Hook constructor to close the parenthesis and insert the call statement to endBrTableBlock() here
-            BrTable(_, _) => Hook::new(name, args!(tableIdx: I32, brTablesInfoIdx: I32), name, "Wasabi.module.info.brTables[brTablesInfoIdx].table, Wasabi.module.info.brTables[brTablesInfoIdx].default, tableIdx); Wasabi.endBrTableBlocks(brTablesInfoIdx, tableIdx, func",s_idx,ptype_id),
+            BrTable(_, _) => Hook::new(name, args!(tableIdx: I32, brTablesInfoIdx: I32), name, "Wasabi.module.info.brTables[brTablesInfoIdx].table, Wasabi.module.info.brTables[brTablesInfoIdx].default, tableIdx); Wasabi.endBrTableBlocks(brTablesInfoIdx, tableIdx, func",printi_idx,printsf_idx,printdf_idx,ptype_id),
 
-            MemorySize(_) => Hook::new(name, args!(currentSizePages: I32), name, "currentSizePages",s_idx,ptype_id),
-            MemoryGrow(_) => Hook::new(name, args!(deltaPages: I32, previousSizePages: I32), name, "deltaPages, previousSizePages",s_idx,ptype_id),
+            MemorySize(_) => Hook::new(name, args!(currentSizePages: I32), name, "currentSizePages",printi_idx,printsf_idx,printdf_idx,ptype_id),
+            MemoryGrow(_) => Hook::new(name, args!(deltaPages: I32, previousSizePages: I32), name, "deltaPages, previousSizePages",printi_idx,printsf_idx,printdf_idx,ptype_id),
 
             Load(op, _) => {
                 let ty = op.to_type().results[0];
                 let args = args!(offset: I32, align: I32, addr: I32, value: ty);
                 let instr_name = instr.to_name();
                 let js_args = &format!("\"{}\", {{addr, offset, align}}, {}", instr_name, &args[3].to_lowlevel_long_expr());
-                Hook::new(name, args, "load", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "load", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
             Store(op, _) => {
                 let ty = op.to_type().inputs[1];
                 let args = args!(offset: I32, align: I32, addr: I32, value: ty);
                 let instr_name = instr.to_name();
                 let js_args = &format!("\"{}\", {{addr, offset, align}}, {}", instr_name, &args[3].to_lowlevel_long_expr());
-                Hook::new(name, args, "store", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "store", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
 
             Const(val) => {
                 let args = args!(value: val.to_type());
                 let instr_name = instr.to_name();
                 let js_args = &format!("\"{}\", {}", instr_name, args[0].to_lowlevel_long_expr());
-                Hook::new(name, args, "const_", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "const_", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
             Numeric(op) => {
                 let ty = op.to_type();
@@ -225,7 +237,7 @@ impl HookMap {
                 let args = inputs.chain(results).collect::<Vec<_>>();
                 let instr_name = instr.to_name();
                 let js_args = &format!("\"{}\", {}", instr_name, args.iter().map(Arg::to_lowlevel_long_expr).collect::<Vec<_>>().join(", "));
-                Hook::new(name, args, highlevel_name, js_args,s_idx,ptype_id)
+                Hook::new(name, args, highlevel_name, js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
 
 
@@ -241,46 +253,46 @@ impl HookMap {
                 assert_eq!(polymorphic_tys.len(), 1, "drop has only one argument");
                 let args = args!(value: polymorphic_tys[0]);
                 let js_args = &args[0].to_lowlevel_long_expr();
-                Hook::new(name, args, "drop", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "drop", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
             Select => {
                 assert_eq!(polymorphic_tys.len(), 2, "select has two polymorphic arguments");
                 assert_eq!(polymorphic_tys[0], polymorphic_tys[1], "select arguments must be equal");
                 let args = args!(condition: I32, input0: polymorphic_tys[0], input1: polymorphic_tys[1]);
                 let js_args = &format!("condition === 1, {}", args[1..].iter().map(Arg::to_lowlevel_long_expr).collect::<Vec<_>>().join(", "));
-                Hook::new(name, args, "select", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "select", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
             Local(_, _) => {
                 assert_eq!(polymorphic_tys.len(), 1, "local instructions have only one argument");
                 let args = args!(index: I32, value: polymorphic_tys[0]);
                 let instr_name = instr.to_name();
                 let js_args = &format!("\"{}\", {}", instr_name, args.iter().map(Arg::to_lowlevel_long_expr).collect::<Vec<_>>().join(", "));
-                Hook::new(name, args, "local", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "local", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
             Global(_, _) => {
                 assert_eq!(polymorphic_tys.len(), 1, "global instructions have only one argument");
                 let args = args!(index: I32, value: polymorphic_tys[0]);
                 let instr_name = instr.to_name();
                 let js_args = &format!("\"{}\", {}", instr_name, args.iter().map(Arg::to_lowlevel_long_expr).collect::<Vec<_>>().join(", "));
-                Hook::new(name, args, "global", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "global", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
             Return => {
                 let args = polymorphic_tys.iter().enumerate().map(|(i, &ty)| Arg { name: format!("result{}", i), ty }).collect::<Vec<_>>();
                 let js_args = &format!("[{}]", args.iter().map(Arg::to_lowlevel_long_expr).collect::<Vec<_>>().join(", "));
-                Hook::new(name, args, "return_", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "return_", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
             Call(_) => {
                 let mut args = args!(targetFunc: I32);
                 args.extend(polymorphic_tys.iter().enumerate().map(|(i, &ty)| Arg { name: format!("arg{}", i), ty }));
                 // NOTE calls the high-level call_pre hook with one argument less than call_indirect, thus tableIdx === undefined since this is a direct call
                 let js_args = &format!("targetFunc, [{}]", args[1..].iter().map(Arg::to_lowlevel_long_expr).collect::<Vec<_>>().join(", "));
-                Hook::new(name, args, "call_pre", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "call_pre", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
             CallIndirect(_, _) => {
                 let mut args = args!(tableIndex: I32);
                 args.extend(polymorphic_tys.iter().enumerate().map(|(i, &ty)| Arg { name: format!("arg{}", i), ty }));
                 let js_args = &format!("Wasabi.resolveTableIdx(tableIndex), [{}], tableIndex", args[1..].iter().map(Arg::to_lowlevel_long_expr).collect::<Vec<_>>().join(", "));
-                Hook::new(name, args, "call_pre", js_args,s_idx,ptype_id)
+                Hook::new(name, args, "call_pre", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id)
             }
 
 
@@ -293,11 +305,11 @@ impl HookMap {
 
     /* special hooks that do not directly correspond to an instruction or need additional information */
 
-    pub fn start(&self,s_idx: Option<Idx<Function>>) -> Instr {
-        self.get_or_insert(Hook::new("start", vec![], "start", "",s_idx,173))
+    pub fn start(&self,printi_idx: Option<Idx<Function>>,printsf_idx: Option<Idx<Function>>,printdf_idx: Option<Idx<Function>>) -> Instr {
+        self.get_or_insert(Hook::new("start", vec![], "start", "",printi_idx,printsf_idx,printdf_idx,173))
     }
 
-    pub fn call_post(&self, result_tys: &[ValType],s_idx: Option<Idx<Function>>) -> Instr {
+    pub fn call_post(&self, result_tys: &[ValType],printi_idx: Option<Idx<Function>>,printsf_idx: Option<Idx<Function>>,printdf_idx: Option<Idx<Function>>) -> Instr {
         let name = mangle_polymorphic_name("call_post", result_tys);
         let ptype_id = mangle_polymorphic_id(174,result_tys);
         let args = result_tys
@@ -315,44 +327,44 @@ impl HookMap {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        self.get_or_insert(Hook::new(name, args, "call_post", js_args,s_idx,ptype_id))
+        self.get_or_insert(Hook::new(name, args, "call_post", js_args,printi_idx,printsf_idx,printdf_idx,ptype_id))
     }
 
-    pub fn begin_function(&self,s_idx: Option<Idx<Function>>) -> Instr {
-        self.get_or_insert(Hook::new("begin_function", vec![], "begin", "\"function\"",s_idx,175))
+    pub fn begin_function(&self,printi_idx: Option<Idx<Function>>,printsf_idx: Option<Idx<Function>>,printdf_idx: Option<Idx<Function>>) -> Instr {
+        self.get_or_insert(Hook::new("begin_function", vec![], "begin", "\"function\"",printi_idx,printsf_idx,printdf_idx,175))
     }
 
-    pub fn begin_block(&self,s_idx: Option<Idx<Function>>) -> Instr {
-        self.get_or_insert(Hook::new("begin_block", vec![], "begin", "\"block\"",s_idx,176))
+    pub fn begin_block(&self,printi_idx: Option<Idx<Function>>,printsf_idx: Option<Idx<Function>>,printdf_idx: Option<Idx<Function>>) -> Instr {
+        self.get_or_insert(Hook::new("begin_block", vec![], "begin", "\"block\"",printi_idx,printsf_idx,printdf_idx,176))
     }
 
-    pub fn begin_loop(&self,s_idx: Option<Idx<Function>>) -> Instr {
-        self.get_or_insert(Hook::new("begin_loop", vec![], "begin", "\"loop\"",s_idx,177))
+    pub fn begin_loop(&self,printi_idx: Option<Idx<Function>>,printsf_idx: Option<Idx<Function>>,printdf_idx: Option<Idx<Function>>) -> Instr {
+        self.get_or_insert(Hook::new("begin_loop", vec![], "begin", "\"loop\"",printi_idx,printsf_idx,printdf_idx,177))
     }
 
-    pub fn begin_if(&self,s_idx: Option<Idx<Function>>) -> Instr {
-        self.get_or_insert(Hook::new("begin_if", vec![], "begin", "\"if\"",s_idx,178))
+    pub fn begin_if(&self,printi_idx: Option<Idx<Function>>,printsf_idx: Option<Idx<Function>>,printdf_idx: Option<Idx<Function>>) -> Instr {
+        self.get_or_insert(Hook::new("begin_if", vec![], "begin", "\"if\"",printi_idx,printsf_idx,printdf_idx,178))
     }
 
-    pub fn begin_else(&self,s_idx: Option<Idx<Function>>) -> Instr {
+    pub fn begin_else(&self,printi_idx: Option<Idx<Function>>,printsf_idx: Option<Idx<Function>>,printdf_idx: Option<Idx<Function>>) -> Instr {
         self.get_or_insert(Hook::new(
             "begin_else",
             args!(ifInstr: I32),
             "begin",
             "\"else\", {func, instr: ifInstr}",
-            s_idx,
+            printi_idx,printsf_idx,printdf_idx,
             179
         ))
     }
 
-    pub fn end(&self, block: &BlockStackElement,s_idx: Option<Idx<Function>>) -> Instr {
+    pub fn end(&self, block: &BlockStackElement,printi_idx: Option<Idx<Function>>,printsf_idx: Option<Idx<Function>>,printdf_idx: Option<Idx<Function>>) -> Instr {
         self.get_or_insert(match *block {
             BlockStackElement::Function { .. } => Hook::new(
                 "end_function",
                 vec![],
                 "end",
                 "\"function\", {func, instr: -1}",
-                s_idx,
+                printi_idx,printsf_idx,printdf_idx,
                 180
             ),
             BlockStackElement::Block { .. } => Hook::new(
@@ -360,7 +372,7 @@ impl HookMap {
                 args!(beginInstr: I32),
                 "end",
                 "\"block\", {func, instr: beginInstr}",
-                s_idx,
+                printi_idx,printsf_idx,printdf_idx,
                 181
             ),
             BlockStackElement::Loop { .. } => Hook::new(
@@ -368,7 +380,7 @@ impl HookMap {
                 args!(beginInstr: I32),
                 "end",
                 "\"loop\", {func, instr: beginInstr}",
-                s_idx,
+                printi_idx,printsf_idx,printdf_idx,
                 182
             ),
             BlockStackElement::If { .. } => Hook::new(
@@ -376,7 +388,7 @@ impl HookMap {
                 args!(beginInstr: I32),
                 "end",
                 "\"if\", {func, instr: beginInstr}",
-                s_idx,
+                printi_idx,printsf_idx,printdf_idx,
                 183
             ),
             BlockStackElement::Else { .. } => Hook::new(
@@ -384,7 +396,7 @@ impl HookMap {
                 args!(elseInstr: I32, ifInstr: I32),
                 "end",
                 "\"else\", {func, instr: elseInstr}, {func, instr: ifInstr}",
-                s_idx,
+                printi_idx,printsf_idx,printdf_idx,
                 184
             ),
         })
@@ -414,11 +426,11 @@ impl HookMap {
         let map = self.map.upgradable_read();
         let hook_idx = match map.get(&hook_name).map(|h| h.idx) {
             Some(hook_idx) => {
-                println!("HOOK ALREADY EXIST {}",hook_name);
+                //println!("HOOK ALREADY EXIST {}",hook_name);
                 hook_idx
             },
             None => {
-                println!("INSERT HOOK {}",hook_name);
+                //println!("INSERT HOOK {}",hook_name);
                 let mut map = RwLockUpgradableReadGuard::upgrade(map);
                 let idx = (self.function_count + map.len()).into();
                 map.insert(hook_name, Hook { idx, ..hook });
@@ -446,22 +458,21 @@ fn mangle_polymorphic_name(name: &str, tys: &[ValType]) -> String {
 fn mangle_polymorphic_id(base_type: i64,tys: &[ValType]) -> i64{
     let mut ret = base_type;
     let mut pos = 8;
+    //print!("{} ",base_type);
     for ty in tys{
-        match ty {
-            I32 => {
-                ret |= (001 << pos)
-            },
-            I64 =>{
-                ret |= (010 << pos)
-            },
-            F32 => {
-                ret |= (011 << pos)
-            },
-            F64 =>{
-                ret |= (100 << pos)
-            }
+        //print!("{} ",ty.to_char());
+        if ty.to_char() == 'i'{
+            ret |= (1 << pos)
+        }else if ty.to_char() == 'I' {
+            ret |= (2 << pos)
+        }else if ty.to_char() == 'f' {
+            ret |= (3 << pos)
+        }else if ty.to_char() == 'F' {
+            ret |= (4 << pos)
         }
         pos += 3;
+        //print!("{} ",ret);
     }
+    //println!("poly_id {}",ret);
     ret
 }
