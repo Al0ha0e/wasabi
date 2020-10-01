@@ -28,7 +28,7 @@ mod type_stack;
 
 /// instruments every instruction in Jalangi-style with a callback that takes inputs, outputs, and
 /// other relevant information.
-pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<String> {
+pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks,pth: &OsStr) -> Option<String> {
     // make sure table is exported, needed for Wasabi runtime to resolve table indices to function indices.
     for table in &mut module.tables {
         if table.export.is_empty() {
@@ -67,17 +67,17 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
     for function in szhiter {
         //println!("MET FUNCTION {} {}",function.import.clone().unwrap().0,function.import.clone().unwrap().1);
         if function.import.is_some() {
-            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="printi" {
+            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="logi" {
                 printi_id_found = true;
                 let szszhid : usize = szhid;
                 printi_idx = Some(szszhid.into());
             }
-            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="printsf" {
+            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="logsf" {
                 printsf_id_found = true;
                 let szszhid : usize = szhid;
                 printsf_idx = Some(szszhid.into());
             }
-            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="printdf" {
+            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="logdf" {
                 printdf_id_found = true;
                 let szszhid : usize = szhid;
                 printdf_idx = Some(szszhid.into());
@@ -94,7 +94,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
     }
     println!("IMPORT {}, APPLY {}",importId,applyId);
 
-    let path: &str = "analyse.txt";
+    let path: String = "./".to_string()+pth.to_str().unwrap()+".txt";//analyse.txt";
     let mut output: File = File::create(path).expect("create failed");
     write!(output,"{}",format!("{}\n{}\n{}",importId,applyId,importFuncNames));
 
@@ -102,7 +102,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
         let mut szh_lowlevel_args = vec![I64];
         module.functions.push(Function {
             type_: FunctionType::new(szh_lowlevel_args, vec![]),//FunctionType::new(szh_lowlevel_args, vec![]),
-            import: Some(("env".to_string(), "printi".to_string())),
+            import: Some(("env".to_string(), "logi".to_string())),
             code: None,
             export: Vec::new(),
             ll_name: String::from("")
@@ -115,7 +115,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
         let mut szh_lowlevel_args = vec![F32];
         module.functions.push(Function {
             type_: FunctionType::new(szh_lowlevel_args, vec![]),//FunctionType::new(szh_lowlevel_args, vec![]),
-            import: Some(("env".to_string(), "printsf".to_string())),
+            import: Some(("env".to_string(), "logsf".to_string())),
             code: None,
             export: Vec::new(),
             ll_name: String::from("")
@@ -128,7 +128,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
         let mut szh_lowlevel_args = vec![F64];
         module.functions.push(Function {
             type_: FunctionType::new(szh_lowlevel_args, vec![]),//FunctionType::new(szh_lowlevel_args, vec![]),
-            import: Some(("env".to_string(), "printdf".to_string())),
+            import: Some(("env".to_string(), "logdf".to_string())),
             code: None,
             export: Vec::new(),
             ll_name: String::from("")
