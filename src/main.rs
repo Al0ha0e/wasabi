@@ -61,7 +61,7 @@ fn main_inner() -> io::Result<()> {
 
     // instrument Wasm and generate JavaScript
     let mut module = Module::from_file(input_file.clone())?;
-    let js = add_hooks(&mut module, &enabled_hooks).unwrap();
+    let js = add_hooks(&mut module, &enabled_hooks,input_filename_no_ext).unwrap();
 
     // write output files
     fs::create_dir_all(output_dir)?;

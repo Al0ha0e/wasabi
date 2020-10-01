@@ -18,6 +18,7 @@ use self::hook_map::HookMap;
 use self::static_info::*;
 use self::type_stack::TypeStack;
 use std::fs::OpenOptions;
+use std::ffi::OsStr;
 
 mod block_stack;
 mod convert_i64;
@@ -26,9 +27,23 @@ mod hook_map;
 mod static_info;
 mod type_stack;
 
+fn find_functions(visited: &mut Vec<bool>,functions: &Vec<Function>,id: i32) {
+    visited[id as usize] = true;
+    for instr in &functions[id as usize].code.as_ref().unwrap().body{
+        match instr {
+            Call(target_func_idx) => {
+                if !visited[target_func_idx.0] && functions[target_func_idx.0].code.is_some(){
+                    find_functions(visited,functions,target_func_idx.0 as i32);
+                }
+            }
+            _=>{}
+        }
+    }
+}
+
 /// instruments every instruction in Jalangi-style with a callback that takes inputs, outputs, and
 /// other relevant information.
-pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<String> {
+pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks,pth: &OsStr) -> Option<String> {
     // make sure table is exported, needed for Wasabi runtime to resolve table indices to function indices.
     for table in &mut module.tables {
         if table.export.is_empty() {
@@ -56,7 +71,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
     let mut printi_idx: Option<Idx<Function>> = None;
     let mut printsf_idx: Option<Idx<Function>> = None;
     let mut printdf_idx: Option<Idx<Function>> = None;
-    let szhiter = module.functions.iter();
+    let mut szhiter = module.functions.iter();
     let mut szhid = 0;
     let mut applyId:usize = 0;
     let mut importId:usize = 0;
@@ -64,20 +79,38 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
     let mut printi_id_found = false;
     let mut printsf_id_found = false;
     let mut printdf_id_found = false;
+    let mut visited: Vec<bool> = Vec::new();
+    for i in 0..module.functions.len(){
+        visited.push(false);
+    }
+
+    let mut targetFile:File = File::open("target.txt").unwrap();
+    let mut targetStr = String::from("");
+    targetFile.read_to_string(&mut targetStr);
+    let targetFunc = targetStr.parse::<i32>();
+    if targetFunc.is_ok(){
+        let unwrapedTarget =  targetFunc.unwrap();
+        if unwrapedTarget > 0{
+            find_functions(& mut visited,&module.functions,unwrapedTarget);
+        }
+    }
+    /////////////////////////////////////////////
+
+    szhiter = module.functions.iter();
     for function in szhiter {
         //println!("MET FUNCTION {} {}",function.import.clone().unwrap().0,function.import.clone().unwrap().1);
         if function.import.is_some() {
-            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="printi" {
+            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="logi" {
                 printi_id_found = true;
                 let szszhid : usize = szhid;
                 printi_idx = Some(szszhid.into());
             }
-            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="printsf" {
+            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="logsf" {
                 printsf_id_found = true;
                 let szszhid : usize = szhid;
                 printsf_idx = Some(szszhid.into());
             }
-            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="printdf" {
+            if function.import.clone().unwrap().0=="env" && function.import.clone().unwrap().1=="logdf" {
                 printdf_id_found = true;
                 let szszhid : usize = szhid;
                 printdf_idx = Some(szszhid.into());
@@ -89,12 +122,13 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
         if !function.export.is_empty() && function.export[0] == "apply"{
             println!("APPLY FOUND IN {}",szhid);
             applyId = szhid;
+            visited[szhid] = true;
         }
         szhid+=1;
     }
     println!("IMPORT {}, APPLY {}",importId,applyId);
 
-    let path: &str = "analyse.txt";
+    let path: String = "./".to_string()+pth.to_str().unwrap() + ".txt";// "./out/analyse.txt";
     let mut output: File = File::create(path).expect("create failed");
     write!(output,"{}",format!("{}\n{}\n{}",importId,applyId,importFuncNames));
 
@@ -102,7 +136,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
         let mut szh_lowlevel_args = vec![I64];
         module.functions.push(Function {
             type_: FunctionType::new(szh_lowlevel_args, vec![]),//FunctionType::new(szh_lowlevel_args, vec![]),
-            import: Some(("env".to_string(), "printi".to_string())),
+            import: Some(("env".to_string(), "logi".to_string())),
             code: None,
             export: Vec::new(),
             ll_name: String::from("")
@@ -115,7 +149,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
         let mut szh_lowlevel_args = vec![F32];
         module.functions.push(Function {
             type_: FunctionType::new(szh_lowlevel_args, vec![]),//FunctionType::new(szh_lowlevel_args, vec![]),
-            import: Some(("env".to_string(), "printsf".to_string())),
+            import: Some(("env".to_string(), "logsf".to_string())),
             code: None,
             export: Vec::new(),
             ll_name: String::from("")
@@ -128,7 +162,7 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
         let mut szh_lowlevel_args = vec![F64];
         module.functions.push(Function {
             type_: FunctionType::new(szh_lowlevel_args, vec![]),//FunctionType::new(szh_lowlevel_args, vec![]),
-            import: Some(("env".to_string(), "printdf".to_string())),
+            import: Some(("env".to_string(), "logdf".to_string())),
             code: None,
             export: Vec::new(),
             ll_name: String::from("")
@@ -136,13 +170,13 @@ pub fn add_hooks(module: &mut Module, enabled_hooks: &EnabledHooks) -> Option<St
         let szszhid : usize = szhid;
         printdf_idx = Some(szszhid.into());
     }
-    let hooks = HookMap::new(&module);
-    println!("????");
-    module.functions.par_iter_mut().enumerate().for_each(&|(fidx, function): (usize, &mut Function)| {
 
+    let hooks = HookMap::new(&module);
+    module.functions.par_iter_mut().enumerate().for_each(&|(fidx, function): (usize, &mut Function)| {
+        let ori_fidx = fidx;
         let fidx = fidx.into();
         // only instrument non-imported functions
-        if function.code.is_none() {
+        if function.code.is_none() || !visited[ori_fidx] {
             return;
         }
 
