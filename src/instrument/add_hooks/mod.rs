@@ -18,6 +18,7 @@ use self::hook_map::HookMap;
 use self::static_info::*;
 use self::type_stack::TypeStack;
 use std::fs::OpenOptions;
+use std::ffi::OsStr;
 
 mod block_stack;
 mod convert_i64;
